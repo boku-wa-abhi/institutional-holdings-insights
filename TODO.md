@@ -1,0 +1,2 @@
+- Write Documentation about the extracted columns, what each columns menas
+- write cleaning of the extracted data script. 

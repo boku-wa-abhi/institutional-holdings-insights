@@ -348,3 +348,27 @@ class Extractor13FHR:
         # Write workbook: InfoTable, FilingData, 13F-HR (no SEC-HEADER)
         WorkbookWriter().write(out_xlsx_path, df_infotable=df_infotable, filing_data_rows=filing_data_rows, type_block_rows=type_rows)
         return out_xlsx_path
+
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description="Extract 13F-HR submission text to an Excel workbook")
+    parser.add_argument("input_path", help="Path to the 13F-HR submission .txt file")
+    parser.add_argument(
+        "--out-dir",
+        dest="base_output_dir",
+        default=None,
+        help="Base output directory (default: data/extracted_13F_HR)",
+    )
+    args = parser.parse_args()
+
+    try:
+        extractor = Extractor13FHR()
+        out_path = extractor.run(args.input_path, base_output_dir=args.base_output_dir)
+        print(f"Workbook written: {out_path}")
+        sys.exit(0)
+    except Exception as e:
+        print(f"Error extracting workbook: {e}", file=sys.stderr)
+        sys.exit(2)
