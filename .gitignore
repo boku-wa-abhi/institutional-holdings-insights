@@ -60,3 +60,4 @@ pytest_cache/
 # Data outputs (keep placeholder)
 data/*
 !data/.gitkeep
+notebook/unique_class_titles.txt
