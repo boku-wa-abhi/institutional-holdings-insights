@@ -180,3 +180,17 @@ To achieve a canonical, analytically useful dataset, the parser must operate as 
 The transformation of raw title entries into a structured, classified dataset unlocks crucial quantitative capabilities. By isolating security types based on the formalized suffix catalog and resolving issuers via confirmed abbreviations, analysts can move beyond simple aggregation. The structured output enables precise risk modeling by segmenting holdings by financial structure (common, preferred, debt, derivative). Furthermore, the detailed classification of non-corporate holdings allows for accurate attribution of factor exposures—for example, isolating strategic allocations to inflation hedging (TIPS), high-quality credit (CLOs), or specific factors (Low Volatility, Quality Momentum). This systematic standardization transitions the data from a raw regulatory submission into an engineered financial dataset capable of supporting sophisticated portfolio attribution and structural risk analysis.
 
 
+## Works cited
+
+1. Acacia Research Corporation (Acacia Tech) Common Stock (ACTG) - Nasdaq, accessed November 9, 2025, https://www.nasdaq.com/market-activity/stocks/actg
+2. Acacia Research Corporation (Acacia Tech) Common Stock (ACTG) Historical Quotes - Nasdaq, accessed November 9, 2025, https://www.nasdaq.com/market-activity/stocks/actg/historical
+3. Fidelity National Financial, Inc. Common Stock (FNF) - Nasdaq, accessed November 9, 2025, https://www.nasdaq.com/market-activity/stocks/fnf
+4. Fidelity National Financial, Inc. Common Stock (FNF) Stock Price Fidelity National Financial Inc | Morningstar Canada, accessed November 9, 2025, https://global.morningstar.com/en-ca/investments/stocks/0P0000024N/quote?exchange=XNYS&ticker=FNF
+5. Canada Goose Holdings Inc. Subordinate Voting Shares (GOOS) | TSX Stock Price | TMX Money, accessed November 9, 2025, https://money.tmx.com/en/quote/GOOS
+6. Canada Goose Holdings Inc. Subordinate Voting Shares (GOOS) - Nasdaq, accessed November 9, 2025, https://www.nasdaq.com/market-activity/stocks/goos
+7. BAC-B Search Results - QuantumOnline.com, accessed November 9, 2025, https://www.quantumonline.com/SearchDD.cfm?tickersymbol=BAC-B&sopt=symbol
+8. BAC-B Stock Quote | Price Chart | Volume Chart (Bank of America...) - Market Chameleon, accessed November 9, 2025, https://marketchameleon.com/Overview/BAC-B/Summary/
+9. iShares AAA CLO Active ETF | CLOA - BlackRock, accessed November 9, 2025, https://www.blackrock.com/us/individual/products/330488/blackrock-aaa-clo-etf
+10. Eldridge AAA CLO ETF (CLOX), accessed November 9, 2025, https://cloxfund.com/
+11. Invesco 0-5 Yr US TIPS ETF, accessed November 9, 2025, https://www.invesco.com/us/en/financial-products/etfs/invesco-0-5-yr-us-tips-etf.html
+12. iShares 0-5 Year TIPS Bond ETF | STIP, accessed November 9, 2025, https://www.ishares.com/us/products/239450/ishares-05-year-tips-bond-etf
