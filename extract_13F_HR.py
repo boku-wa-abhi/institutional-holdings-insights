@@ -7,7 +7,7 @@ from src.data_extraction.extract_13F_HR import Extractor13FHR
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Extract SEC 13F-HR InfoTable and SEC-HEADER into a multi-sheet Excel/CSV")
+    parser = argparse.ArgumentParser(description="Extract SEC 13F-HR InfoTable, SEC-HEADER, and FilingData into a multi-sheet Excel/CSV")
     parser.add_argument("input", help="Path to combined SEC text file containing form13fInfoTable.xml")
     parser.add_argument(
         "--out-base",
@@ -22,8 +22,8 @@ def main() -> int:
         return 1
 
     try:
-        extractor = Extractor13FHR(str(input_path), base_out_dir=args.out_base)
-        out_path = extractor.run()
+        extractor = Extractor13FHR()
+        out_path = extractor.run(str(input_path), base_output_dir=args.out_base)
         print(f"Success. Output: {out_path}")
         return 0
     except Exception as e:

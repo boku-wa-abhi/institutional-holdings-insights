@@ -186,82 +186,165 @@ class PathUtils:
             return os.path.basename(os.path.dirname(input_path)) or "unknown_issuer"
 
 
-class WorkbookWriter:
-    def __init__(self, base_out_dir: str):
-        self.base_out_dir = base_out_dir
+class FilingDataResolver:
+    @staticmethod
+    def parse_field(header_text: str, pattern: str) -> str:
+        m = re.search(pattern, header_text, flags=re.IGNORECASE | re.MULTILINE)
+        return (m.group(1).strip() if m else "")
 
-    def write(self, issuer: str, date_str: str, info_rows: List[Dict[str, object]], header_rows: Optional[List[Dict[str, object]]]) -> str:
-        out_dir = os.path.join(self.base_out_dir, issuer)
-        PathUtils.ensure_dir(out_dir)
-        out_path_xlsx = os.path.join(out_dir, f"{date_str}.xlsx")
-        if pd is not None:
-            try:
-                df_info = InfoTableExtractor.to_dataframe(info_rows)
-                df_header = SECHeaderParser.to_dataframe(header_rows or [])
-                assert df_info is not None
-                with pd.ExcelWriter(out_path_xlsx) as writer:
-                    df_info.to_excel(writer, sheet_name="InfoTable", index=False)
-                    if df_header is not None and not df_header.empty:
-                        df_header.to_excel(writer, sheet_name="SEC-HEADER", index=False)
-                return out_path_xlsx
-            except Exception:
-                pass
-        import csv
-        out_info_csv = os.path.join(out_dir, f"{date_str}_infotable.csv")
-        out_header_csv = os.path.join(out_dir, f"{date_str}_sec_header.csv")
-        fieldnames_info = [
-            "issuer_name",
-            "class_title",
-            "cusip",
-            "value_usd_thousands",
-            "shares_or_principal",
-            "shares_type",
-            "discretion",
-            "other_manager_seq",
-            "vote_sole",
-            "vote_shared",
-            "vote_none",
-        ]
-        with open(out_info_csv, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=fieldnames_info)
-            w.writeheader()
-            for r in info_rows:
-                w.writerow(r)
-        fieldnames_header = ["section_path", "field", "value"]
-        with open(out_header_csv, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=fieldnames_header)
-            w.writeheader()
-            for r in (header_rows or []):
-                w.writerow(r)
-        return out_info_csv
+    @staticmethod
+    def compose_business_address(header_text: str) -> str:
+        street = FilingDataResolver.parse_field(header_text, r"BUSINESS ADDRESS:\s*[\r\n]+\s*STREET 1:\s*(.+)")
+        city = FilingDataResolver.parse_field(header_text, r"BUSINESS ADDRESS:.*?[\r\n]+\s*CITY:\s*(.+)")
+        state = FilingDataResolver.parse_field(header_text, r"BUSINESS ADDRESS:.*?[\r\n]+\s*STATE:\s*([A-Z]{2})")
+        zip_code = FilingDataResolver.parse_field(header_text, r"BUSINESS ADDRESS:.*?[\r\n]+\s*ZIP:\s*(\d{5}(?:-\d{4})?)")
+        parts = [p for p in [street, city, state, zip_code] if p]
+        return ", ".join(parts)
+
+    @staticmethod
+    def parse(header_text: str):
+        rows = []
+        add = rows.append
+        # Top submission metadata
+        add({"Field": "Accession_Number", "Value": FilingDataResolver.parse_field(header_text, r"ACCESSION NUMBER:\s*([0-9\-]+)")})
+        add({"Field": "Submission_Type", "Value": FilingDataResolver.parse_field(header_text, r"CONFORMED SUBMISSION TYPE:\s*([A-Z0-9\-]+)")})
+        add({"Field": "Period_of_Report", "Value": FilingDataResolver.parse_field(header_text, r"CONFORMED PERIOD OF REPORT:\s*(\d{8})")})
+        add({"Field": "Filed_Date", "Value": FilingDataResolver.parse_field(header_text, r"FILED AS OF DATE:\s*(\d{8})")})
+        # Company data
+        add({"Field": "Filer_Name", "Value": FilingDataResolver.parse_field(header_text, r"COMPANY CONFORMED NAME:\s*(.+)")})
+        add({"Field": "CIK", "Value": FilingDataResolver.parse_field(header_text, r"CENTRAL INDEX KEY:\s*(\d+)")})
+        # SIC may appear like: STANDARD INDUSTRIAL CLASSIFICATION: [desc] [6211]
+        sic_code = FilingDataResolver.parse_field(header_text, r"STANDARD INDUSTRIAL CLASSIFICATION:\s*.*\[(\d+)\]")
+        if not sic_code:
+            sic_code = FilingDataResolver.parse_field(header_text, r"SIC:\s*(\d+)")
+        add({"Field": "SIC", "Value": sic_code})
+        add({"Field": "IRS_Number", "Value": FilingDataResolver.parse_field(header_text, r"IRS NUMBER:\s*(\d+)")})
+        add({"Field": "State_of_Incorporation", "Value": FilingDataResolver.parse_field(header_text, r"STATE OF INCORPORATION:\s*([A-Z]{2})")})
+        add({"Field": "Fiscal_Year_End", "Value": FilingDataResolver.parse_field(header_text, r"FISCAL YEAR END:\s*(\d{4})")})
+        # Business address block
+        add({"Field": "Business_Address", "Value": FilingDataResolver.compose_business_address(header_text)})
+        add({"Field": "Business_Phone", "Value": FilingDataResolver.parse_field(header_text, r"BUSINESS PHONE:\s*([^\n]+)")})
+        # Filing values
+        add({"Field": "SEC_File_Number", "Value": FilingDataResolver.parse_field(header_text, r"SEC FILE NUMBER:\s*([0-9\-]+)")})
+        add({"Field": "Film_Number", "Value": FilingDataResolver.parse_field(header_text, r"FILM NUMBER:\s*(\d+)")})
+        # Former company
+        add({"Field": "Former_Name", "Value": FilingDataResolver.parse_field(header_text, r"FORMER CONFORMED NAME:\s*(.+)")})
+        add({"Field": "Former_Name_Change_Date", "Value": FilingDataResolver.parse_field(header_text, r"DATE OF NAME CHANGE:\s*(\d{8})")})
+        return rows
+
+
+class TypeBlockScraper13FHR:
+    @staticmethod
+    def extract_block(text: str) -> Optional[str]:
+        m_start = re.search(r"<TYPE>\s*13F-HR\b", text, flags=re.IGNORECASE)
+        if not m_start:
+            return None
+        m_end = re.search(r"<TYPE>\s*INFORMATION TABLE\b", text[m_start.end():], flags=re.IGNORECASE)
+        end_pos = m_start.end() + (m_end.start() if m_end else 0)
+        block = text[m_start.end(): end_pos].strip()
+        return block if block else None
+
+    @staticmethod
+    def parse_to_rows(block: str) -> List[Dict[str, str]]:
+        rows: List[Dict[str, str]] = []
+        for raw_line in block.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            # Inline XML value like: <cik>0002012383</cik>
+            m_xml = re.match(r"^<([A-Za-z0-9]+)>(.*?)</\1>$", line)
+            if m_xml:
+                rows.append({"Field": m_xml.group(1), "Value": m_xml.group(2).strip()})
+                continue
+            # Ignore bare XML tags (opening/closing) without inline values
+            if re.match(r"^</?[A-Za-z0-9]+>", line):
+                continue
+            # Checkbox pattern like: "Check here if Amendment [X]"
+            m_cb = re.match(r"^(.*?)(\[\s*[Xx]\s*\]|\[\s*\])", line)
+            if m_cb:
+                field = m_cb.group(1).strip().rstrip(":")
+                value = "Yes" if "x" in m_cb.group(2).lower() else "No"
+                rows.append({"Field": field or "_checkbox", "Value": value})
+                continue
+            if ":" in line:
+                field, value = line.split(":", 1)
+                rows.append({"Field": field.strip(), "Value": value.strip()})
+            else:
+                rows.append({"Field": "_text", "Value": line})
+        return rows
+
+
+class WorkbookWriter:
+    def write(self, out_xlsx_path: str, df_infotable, filing_data_rows=None, type_block_rows=None):
+        try:
+            import pandas as pd
+            with pd.ExcelWriter(out_xlsx_path, engine="openpyxl") as writer:
+                if df_infotable is not None:
+                    df_infotable.to_excel(writer, index=False, sheet_name="InfoTable")
+                if filing_data_rows:
+                    df_filing = pd.DataFrame(filing_data_rows, columns=["Field", "Value"])
+                    df_filing.to_excel(writer, index=False, sheet_name="FilingData")
+                if type_block_rows:
+                    df_type = pd.DataFrame(type_block_rows, columns=["Field", "Value"])
+                    df_type.to_excel(writer, index=False, sheet_name="13F-HR")
+            return True
+        except Exception:
+            import os
+            import csv
+            base, _ = os.path.splitext(out_xlsx_path)
+            out_info_csv = base + "_infotable.csv"
+            out_filing_csv = base + "_filing_data.csv"
+            out_type_csv = base + "_13fhr.csv"
+            if df_infotable is not None:
+                if hasattr(df_infotable, "to_csv"):
+                    df_infotable.to_csv(out_info_csv, index=False)
+                else:
+                    cols = list(df_infotable[0].keys()) if df_infotable else []
+                    with open(out_info_csv, "w", newline="") as f:
+                        w = csv.DictWriter(f, fieldnames=cols)
+                        w.writeheader()
+                        for r in df_infotable:
+                            w.writerow(r)
+            if filing_data_rows:
+                with open(out_filing_csv, "w", newline="") as f:
+                    w = csv.DictWriter(f, fieldnames=["Field", "Value"])
+                    w.writeheader()
+                    for r in filing_data_rows:
+                        w.writerow(r)
+            if type_block_rows:
+                with open(out_type_csv, "w", newline="") as f:
+                    w = csv.DictWriter(f, fieldnames=["Field", "Value"])
+                    w.writeheader()
+                    for r in type_block_rows:
+                        w.writerow(r)
+            return False
 
 
 class Extractor13FHR:
-    def __init__(self, input_path: str, base_out_dir: Optional[str] = None):
-        self.input_path = input_path
-        self.base_out_dir = base_out_dir or os.path.join("data", "extracted_13F_HR")
-
-    def read_text(self) -> str:
-        with open(self.input_path, "r", encoding="utf-8", errors="ignore") as f:
-            return f.read()
-
-    def run(self) -> str:
-        text = self.read_text()
+    def run(self, input_path: str, base_output_dir: str = None):
+        # Read text
+        with open(input_path, "r", encoding="utf-8", errors="ignore") as f:
+            text = f.read()
+        # Resolve filing date
         date_str = FilingDateResolver.parse_date(text)
-        issuer = PathUtils.derive_issuer_from_path(self.input_path)
-
-        info_extractor = InfoTableExtractor(text)
-        xml = info_extractor.extract_xml()
-        if not xml:
-            raise RuntimeError("Could not locate <informationTable> XML block in the input file.")
-        info_rows = info_extractor.parse_rows(xml)
-        if not info_rows:
-            raise RuntimeError("No <infoTable> entries found in the informationTable.")
-
+        # Extract FilingData from SEC-HEADER (sheet removed from output)
         header_parser = SECHeaderParser(text)
         header_block = header_parser.extract_block()
-        header_rows = SECHeaderParser.parse_rows(header_block) if header_block else []
-
-        writer = WorkbookWriter(self.base_out_dir)
-        out_path = writer.write(issuer, date_str, info_rows, header_rows)
-        return out_path
+        filing_data_rows = FilingDataResolver.parse(header_block) if header_block else []
+        # Extract InfoTable
+        info_extractor = InfoTableExtractor(text)
+        xml = info_extractor.extract_xml()
+        info_rows = info_extractor.parse_rows(xml) if xml else []
+        df_infotable = InfoTableExtractor.to_dataframe(info_rows)
+        # Extract 13F-HR type block
+        type_block = TypeBlockScraper13FHR.extract_block(text)
+        type_rows = TypeBlockScraper13FHR.parse_to_rows(type_block) if type_block else []
+        # Derive output path
+        issuer = PathUtils.derive_issuer_from_path(input_path)
+        out_base = base_output_dir or os.path.join("data", "extracted_13F_HR")
+        out_dir = os.path.join(out_base, issuer)
+        PathUtils.ensure_dir(out_dir)
+        out_xlsx_path = os.path.join(out_dir, f"{date_str}.xlsx")
+        # Write workbook: InfoTable, FilingData, 13F-HR (no SEC-HEADER)
+        WorkbookWriter().write(out_xlsx_path, df_infotable=df_infotable, filing_data_rows=filing_data_rows, type_block_rows=type_rows)
+        return out_xlsx_path
